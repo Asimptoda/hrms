@@ -1,0 +1,45 @@
+/* 🌟 Общий стиль сайта */
+body {
+    background-color: #f4f6f9; /* Светлый фон */
+    font-family: 'Arial', sans-serif;
+}
+
+/* 🏗️ Улучшенные таблицы */
+.table {
+    background-color: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 📌 Заголовки */
+h2 {
+    color: #343a40;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* 🎨 Кнопки */
+.btn {
+    border-radius: 5px;
+    transition: 0.3s;
+}
+
+.btn:hover {
+    opacity: 0.8;
+}
+
+/* 📌 Навигация */
+.navbar {
+    background-color: #343a40 !important;
+    border-bottom: 3px solid #007bff;
+}
+
+.nav-link {
+    color: white !important;
+    font-weight: bold;
+}
+
+.nav-link:hover {
+    color: #007bff !important;
+}

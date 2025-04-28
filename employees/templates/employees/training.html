@@ -1,0 +1,275 @@
+{% extends 'base.html' %}
+
+{% block title %}Обучение сотрудников{% endblock %}
+
+{% block content %}
+
+<h2 class="mt-4 mb-4">Обучение сотрудников</h2>
+
+<!-- Таблица обучений -->
+<table class="table table-hover table-bordered">
+    <thead class="table-dark">
+        <tr>
+            <th>Сотрудник</th>
+            <th>Курс</th>
+            <th>Статус</th>
+            <th>Дата завершения</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody id="training-table"></tbody>
+</table>
+
+<!-- Форма назначения обучения -->
+<h3 class="mt-5">Назначить обучение</h3>
+
+<div class="card p-4 shadow-sm mb-4">
+    <form id="training-form">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="employees" class="form-label">Сотрудники:</label>
+                <select id="employees" class="form-select" multiple></select>
+            </div>
+
+            <div class="col-md-4">
+                <label for="positions" class="form-label">Отдел (позиция):</label>
+                <select id="positions" class="form-select">
+                    <option value="">Выберите отдел</option>
+                </select>
+            </div>
+
+            <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="assign_all">
+                    <label class="form-check-label" for="assign_all">Назначить всем сотрудникам компании</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label for="trainings" class="form-label">Курсы:</label>
+            <select id="trainings" class="form-select" multiple required></select>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Назначить обучение</button>
+    </form>
+</div>
+
+<!-- Подключение Select2 -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+// Инициализация Select2 с галочками
+$(document).ready(function() {
+    $('#employees, #trainings').select2({
+        placeholder: "Выберите...",
+        closeOnSelect: false,
+        templateResult: formatCheckbox,
+        templateSelection: formatCheckboxSelection
+    });
+
+    $('#positions').select2({
+        placeholder: "Выберите отдел",
+        minimumResultsForSearch: Infinity
+    });
+});
+
+// Функции для галочек
+function formatCheckbox(state) {
+    if (!state.id) {
+        return state.text;
+    }
+    var $state = $(
+        '<span><input type="checkbox" style="margin-right: 10px;" ' + (state.selected ? 'checked' : '') + '/>' + state.text + '</span>'
+    );
+    return $state;
+}
+
+function formatCheckboxSelection(state) {
+    return state.text;
+}
+
+// CSRF токен
+function getCSRFToken() {
+    let cookieValue = null;
+    document.cookie.split(';').forEach(cookie => {
+        let [name, value] = cookie.trim().split('=');
+        if (name === 'csrftoken') cookieValue = decodeURIComponent(value);
+    });
+    return cookieValue;
+}
+
+// Загрузка данных
+async function loadEmployeesPositionsCourses() {
+    let empResponse = await fetch("/api/employees/");
+    let employees = await empResponse.json();
+    let empSelect = $('#employees');
+    let posSelect = $('#positions');
+    empSelect.empty();
+    posSelect.empty().append('<option value="">Выберите отдел</option>');
+
+    let positions = new Set();
+    employees.forEach(emp => {
+        empSelect.append(new Option(emp.first_name + " " + emp.last_name, emp.id));
+        if (emp.position) {
+            positions.add(emp.position);
+        }
+    });
+    positions.forEach(pos => {
+        posSelect.append(new Option(pos, pos));
+    });
+
+    let courseResponse = await fetch("/api/training/");
+    let courses = await courseResponse.json();
+    let courseSelect = $('#trainings');
+    courseSelect.empty();
+    courses.forEach(course => {
+        courseSelect.append(new Option(course.title, course.id));
+    });
+
+    empSelect.trigger('change');
+    posSelect.trigger('change');
+    courseSelect.trigger('change');
+}
+
+// Загрузка обучений
+async function loadTrainings() {
+    let response = await fetch("/api/employee-training/");
+    let data = await response.json();
+    let table = document.getElementById("training-table");
+    table.innerHTML = "";
+    data.forEach(tr => {
+        let employeeName = tr.employee_name || "Неизвестно";
+        let courseTitle = tr.training_title || "Неизвестно";
+        let status = tr.status || "В процессе";
+        let completionDate = tr.completion_date || "—";
+
+        table.innerHTML += `<tr>
+            <td>${employeeName}</td>
+            <td>${courseTitle}</td>
+            <td>${status}</td>
+            <td>${completionDate}</td>
+            <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteTraining(${tr.id})">Удалить</button>
+            </td>
+        </tr>`;
+    });
+}
+
+// Отправка формы
+document.getElementById("training-form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    let employees = $('#employees').val();
+    let position = $('#positions').val();
+    let trainings = $('#trainings').val();
+    let assignAll = $('#assign_all').is(':checked');
+
+    if (!trainings.length) {
+        alert("Выберите хотя бы один курс.");
+        return;
+    }
+
+    if (!employees.length && !position && !assignAll) {
+        alert("Выберите сотрудников, отдел или всех сотрудников.");
+        return;
+    }
+
+    if (employees.length > 0) {
+        for (let employeeId of employees) {
+            for (let trainingId of trainings) {
+                let data = { employee: employeeId, training: trainingId };
+
+                let response = await fetch("/api/employee-training/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCSRFToken()
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    let error = await response.json();
+                    console.error("Ошибка:", error);
+                    alert("Ошибка: " + JSON.stringify(error));
+                }
+            }
+        }
+    } else {
+        let data = {
+            trainings: trainings,
+            position: position || null,
+            assign_all: assignAll
+        };
+
+        let response = await fetch("/api/employee-training/assign/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCSRFToken()
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            let error = await response.json();
+            console.error("Ошибка:", error);
+            alert("Ошибка: " + JSON.stringify(error));
+        }
+    }
+
+    alert("Обучение успешно назначено!");
+    document.getElementById("training-form").reset();
+    loadTrainings();
+});
+
+// Удаление обучения
+async function deleteTraining(id) {
+    if (!confirm("Удалить это обучение?")) return;
+
+    let response = await fetch(`/api/employee-training/${id}/`, {
+        method: "DELETE",
+        headers: { "X-CSRFToken": getCSRFToken()}
+    });
+
+    if (response.ok) {
+        loadTrainings();
+    } else {
+        let error = await response.json();
+        console.error("Ошибка при удалении:", error);
+        alert("Ошибка при удалении: " + JSON.stringify(error));
+    }
+}
+
+// Всё загружаем при старте страницы
+document.addEventListener("DOMContentLoaded", function() {
+    loadEmployeesPositionsCourses();
+    loadTrainings();
+
+    // Очистка выборов
+    document.getElementById('employees').addEventListener('change', function() {
+        if (this.selectedOptions.length > 0) {
+            $('#positions').val('').trigger('change');
+            $('#assign_all').prop('checked', false);
+        }
+    });
+
+    document.getElementById('positions').addEventListener('change', function() {
+        if (this.value !== '') {
+            $('#employees').val('').trigger('change');
+            $('#assign_all').prop('checked', false);
+        }
+    });
+
+    document.getElementById('assign_all').addEventListener('change', function() {
+        if (this.checked) {
+            $('#employees').val('').trigger('change');
+            $('#positions').val('').trigger('change');
+        }
+    });
+});
+</script>
+
+{% endblock %}

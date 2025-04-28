@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+
+{% block title %}Зарплаты сотрудников{% endblock %}
+
+{% block content %}
+<h2>Зарплаты сотрудников</h2>
+
+<table class="table table-hover table-bordered">
+    <thead>
+        <tr>
+            <th>Сотрудник</th>
+            <th>Месяц</th>
+            <th>Год</th>
+            <th>Базовая ставка</th>
+            <th>Переработки (часы)</th>
+            <th>Неоплач. отпуск (дни)</th>
+            <th>Бонусы</th>
+            <th>Вычеты</th>
+            <th>Итоговая зарплата</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody id="salaries-table"></tbody>
+</table>
+
+    <div class="row mb-3">
+    <div class="col-md-3">
+        <label for="filter_employee" class="form-label">Фильтр по сотруднику:</label>
+        <select id="filter_employee" class="form-select"><option value="">Все</option></select>
+    </div>
+    <div class="col-md-2">
+        <label for="filter_month" class="form-label">Месяц:</label>
+        <select id="filter_month" class="form-select">
+            <option value="">Все</option>
+            <option value="1">Январь</option>
+            <option value="2">Февраль</option>
+            <option value="3">Март</option>
+            <option value="4">Апрель</option>
+            <option value="5">Май</option>
+            <option value="6">Июнь</option>
+            <option value="7">Июль</option>
+            <option value="8">Август</option>
+            <option value="9">Сентябрь</option>
+            <option value="10">Октябрь</option>
+            <option value="11">Ноябрь</option>
+            <option value="12">Декабрь</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label for="filter_year" class="form-label">Год:</label>
+        <input type="number" id="filter_year" class="form-control" placeholder="2025">
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-primary mt-4" onclick="applyFilters()">🔍 Применить</button>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center my-3">
+    <h3>Отчеты по зарплате</h3>
+    <div>
+        <button class="btn btn-outline-primary" onclick="downloadReport('excel')">📊 Скачать в Excel</button>
+        <button class="btn btn-outline-danger" onclick="downloadReport('pdf')">📄 Скачать в PDF</button>
+    </div>
+</div>
+
+<h3>Добавить/Редактировать зарплату</h3>
+<form id="salary-form" class="card p-3 shadow">
+    <input type="hidden" id="salary_id">
+
+    <label for="salary_employee" class="form-label">Сотрудник:</label>
+    <select id="salary_employee" class="form-select" required></select>
+
+    <label for="salary_month" class="form-label">Месяц:</label>
+    <select id="salary_month" class="form-select" required>
+        <option value="1">Январь</option>
+        <option value="2">Февраль</option>
+        <option value="3">Март</option>
+        <option value="4">Апрель</option>
+        <option value="5">Май</option>
+        <option value="6">Июнь</option>
+        <option value="7">Июль</option>
+        <option value="8">Август</option>
+        <option value="9">Сентябрь</option>
+        <option value="10">Октябрь</option>
+        <option value="11">Ноябрь</option>
+        <option value="12">Декабрь</option>
+    </select>
+
+    <label for="salary_year" class="form-label mt-2">Год:</label>
+    <input type="number" id="salary_year" placeholder="Введите год" class="form-control" required>
+
+    <label for="salary_base" class="form-label mt-2">Базовая зарплата:</label>
+    <input type="number" id="salary_base" placeholder="Введите базовую зарплату" class="form-control" required>
+
+    <label for="overtime_hours" class="form-label mt-2">Переработка (часы):</label>
+    <input type="number" id="overtime_hours" placeholder="Введите часы переработок" class="form-control" required>
+
+    <label for="unpaid_leave_days" class="form-label mt-2">Неоплачиваемый отпуск (дни):</label>
+    <input type="number" id="unpaid_leave_days" placeholder="Введите дни Неоплачиваемого отпуска" class="form-control" required>
+
+    <label for="salary_bonuses" class="form-label mt-2">Бонусы:</label>
+    <input type="number" id="salary_bonuses" placeholder="Введите бонусы" class="form-control" required>
+
+    <label for="salary_deductions" class="form-label mt-2">Вычеты:</label>
+    <input type="number" id="salary_deductions" placeholder="Введите вычеты" class="form-control" required>
+
+    <button class="btn btn-primary mt-3" type="submit">Сохранить</button>
+</form>
+
+<script>
+    // Функция для получения CSRF-токена из cookie
+    function getCSRFToken() {
+    let cookieValue = null;
+    document.cookie.split(';').forEach(cookie => {
+        let [name, value] = cookie.trim().split('=');
+        if (name === 'csrftoken') cookieValue = decodeURIComponent(value);
+    });
+    return cookieValue;
+}
+
+
+    async function loadEmployees() {
+        let response = await fetch("/api/employees/");
+        let data = await response.json();
+        let select = document.getElementById("salary_employee");
+
+        select.innerHTML = `<option value="">Выберите сотрудника</option>`;  // ✅ Добавляем пустой вариант
+        data.forEach(emp => {
+            let option = `<option value="${emp.id}">${emp.first_name} ${emp.last_name}</option>`;
+            select.innerHTML += option;
+        });
+    }
+
+    async function loadEmployeesForFilter() {
+        const select = document.getElementById('filter_employee');
+        select.innerHTML = '<option value="">Все</option>'; // Обнуляем и добавляем "Все"
+
+        let response = await fetch('/api/employees/');
+        let employees = await response.json();
+
+        employees.forEach(emp => {
+            let option = document.createElement('option');
+            option.value = emp.id;
+            option.text = emp.first_name + " " + emp.last_name;
+            select.appendChild(option);
+        });
+    }
+
+
+    async function filterSalaries() {
+    let employeeId = document.getElementById("filter_employee").value;
+    let url = employeeId ? `/api/salaries/?employee_id=${employeeId}` : "/api/salaries/";
+
+    let response = await fetch(url);
+    let data = await response.json();
+    let table = document.getElementById("salaries-table");
+    table.innerHTML = "";
+
+    data.forEach(sal => {
+        let row = `<tr>
+            <td>${sal.employee.first_name} ${sal.employee.last_name}</td>
+            <td>${sal.month}</td>
+            <td>${sal.year}</td>
+            <td>${sal.base_salary}</td>
+            <td>${sal.overtime_hours}</td>
+            <td>${sal.unpaid_leave_days}</td>
+            <td>${sal.bonuses}</td>
+            <td>${sal.deductions}</td>
+            <td>${sal.total_salary}</td>
+            <td>
+                <button class="btn btn-warning btn-sm" onclick="editSalary(${sal.id}, ${sal.employee.id}, ${sal.month}, ${sal.year}, ${sal.base_salary}, ${sal.overtime_hours}, ${sal.unpaid_leave_days}, ${sal.bonuses}, ${sal.deductions})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteSalary(${sal.id})">🗑️</button>
+            </td>
+        </tr>`;
+        table.innerHTML += row;
+    });
+}
+
+    async function loadSalaries() {
+        let employeeId = document.getElementById("filter_employee").value;
+        let month = document.getElementById("filter_month").value;
+        let year = document.getElementById("filter_year").value;
+
+        let url = "/api/salaries/";
+        let params = new URLSearchParams();
+
+        if (employeeId) params.append("employee", employeeId);
+        if (month) params.append("month", month);
+        if (year) params.append("year", year);
+
+        let response = await fetch(url + "?" + params.toString());
+        let data = await response.json();
+        let table = document.getElementById("salaries-table");
+        table.innerHTML = "";
+
+        data.forEach(sal => {
+            let employeeName = sal.employee ? `${sal.employee.first_name} ${sal.employee.last_name}` : "Неизвестный сотрудник";
+            let employeeId = sal.employee?.id ?? sal.employee;
+
+            let row = `<tr>
+                <td>${employeeName}</td>
+                <td>${sal.month}</td>
+                <td>${sal.year}</td>
+                <td>${sal.base_salary}</td>
+                <td>${sal.overtime_hours || 0}</td>
+                <td>${sal.unpaid_leave_days || 0}</td>
+                <td>${sal.bonuses}</td>
+                <td>${sal.deductions}</td>
+                <td>${sal.total_salary}</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" onclick="editSalary(${sal.id}, ${employeeId}, ${sal.month}, ${sal.year}, ${sal.base_salary}, ${sal.overtime_hours}, ${sal.unpaid_leave_days}, ${sal.bonuses}, ${sal.deductions})">✏️ Редактировать</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSalary(${sal.id})">🗑️ Удалить</button>
+                </td>
+            </tr>`;
+            table.innerHTML += row;
+        });
+    }
+
+    function applyFilters() {
+        loadSalaries();
+    }
+
+
+
+    async function deleteSalary(id) {
+        if (confirm("Вы уверены, что хотите удалить запись о зарплате?")) {
+            await fetch(`/api/salaries/${id}/`, { method: "DELETE" });
+            loadSalaries();
+        }
+    }
+
+    function calculateSalary(employeeId) {
+        fetch(`/generate-salary/${employeeId}/`)
+            .then(response => response.json())
+            .then(data => {
+                alert(`Расчет завершен! Итоговая зарплата: ${data.total_salary}`);
+                loadSalaries();
+            })
+            .catch(error => console.error("Ошибка расчета:", error));
+    }
+
+    function editSalary(id, employeeId, month, year, base_salary, overtime_hours, unpaid_leave_days, bonuses, deductions) {
+        document.getElementById("salary_id").value = id;
+        document.getElementById("salary_employee").value = employeeId;
+        document.getElementById("salary_month").value = month;
+        document.getElementById("salary_year").value = year;
+        document.getElementById("salary_base").value = base_salary ?? 0;
+        document.getElementById("overtime_hours").value = overtime_hours ?? 0;
+        document.getElementById("unpaid_leave_days").value = unpaid_leave_days ?? 0;
+        document.getElementById("salary_bonuses").value = bonuses ?? 0;
+        document.getElementById("salary_deductions").value = deductions ?? 0;
+    }
+
+    document.getElementById("salary-form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    let id = document.getElementById("salary_id").value;
+    let url = id ? `/api/salaries/${id}/` : "/api/salaries/";
+    let method = id ? "PUT" : "POST";
+
+    let salaryData = {
+        employee_id: document.getElementById("salary_employee").value,
+        month: document.getElementById("salary_month").value,
+        year: parseInt(document.getElementById("salary_year").value) || 0,
+        base_salary: parseFloat(document.getElementById("salary_base").value) || 0,
+        overtime_hours: parseFloat(document.getElementById("overtime_hours").value) || 0,
+        unpaid_leave_days: parseInt(document.getElementById("unpaid_leave_days").value) || 0,
+        bonuses: parseFloat(document.getElementById("salary_bonuses").value) || 0,
+        deductions: parseFloat(document.getElementById("salary_deductions").value) || 0
+    };
+
+    try {
+        let response = await fetch(url, {
+            method: method,
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCSRFToken()
+            },
+            body: JSON.stringify(salaryData)
+        });
+
+        if (response.ok) {
+            alert("✅ Зарплата успешно сохранена!");
+            loadSalaries();
+            document.getElementById("salary-form").reset();
+        } else if (response.status === 403) {
+            alert("⛔ Ошибка 403: Доступ запрещён. Проверьте авторизацию и CSRF токен!");
+        } else {
+            let errorData = await response.json();
+            console.error("Ошибка сохранения:", errorData);
+            alert("❌ Ошибка сохранения: " + JSON.stringify(errorData));
+        }
+    } catch (error) {
+        console.error("Ошибка сети:", error);
+        alert("❌ Ошибка сети при попытке сохранить зарплату.");
+    }
+});
+
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadEmployees();
+        loadEmployeesForFilter();
+        loadSalaries();
+    });
+
+    function downloadReport(format) {
+        let month = prompt("Введите номер месяца (1-12) или оставьте пустым для всех месяцев:");
+        let year = prompt("Введите год (например, 2025) или оставьте пустым:");
+
+        let url = `/report/salary/${format}/`;
+        if (year) url += `${year}/`;
+        if (month) url += `${month}/${year}/`;
+
+        window.location.href = url;
+    }
+
+</script>
+
+{% endblock %}

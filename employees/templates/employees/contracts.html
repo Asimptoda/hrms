@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block title %}Контракты{% endblock %}
+
+{% block content %}
+<h2>Контракты сотрудников</h2>
+
+<table class="table table-hover table-bordered">
+    <thead>
+        <tr>
+            <th>Сотрудник</th>
+            <th>Тип контракта</th>
+            <th>Дата начала</th>
+            <th>Дата окончания</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody id="contracts-table"></tbody>
+</table>
+
+<h3>Добавить/Редактировать контракт</h3>
+<form id="contract-form" class="card p-3 shadow">
+    <input type="hidden" id="contract_id">
+
+    <label for="contract_employee" class="form-label">Сотрудник:</label>
+    <select id="contract_employee" class="form-select" required></select>
+
+    <label for="contract_type" class="form-label mt-2">Тип контракта:</label>
+    <select id="contract_type" class="form-select">
+        <option value="Full-time">Полный рабочий день</option>
+        <option value="Part-time">Частичная занятость</option>
+        <option value="Freelance">Фриланс</option>
+    </select>
+
+    <label for="contract_start" class="form-label mt-2">Дата начала:</label>
+    <input type="date" id="contract_start" class="form-control" required>
+
+    <label for="contract_end" class="form-label mt-2">Дата окончания:</label>
+    <input type="date" id="contract_end" class="form-control" required>
+
+    <button class="btn btn-primary mt-3" type="submit">Сохранить</button>
+</form>
+
+<script>
+    function getCSRFToken() {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            document.cookie.split(';').forEach(cookie => {
+                let [name, value] = cookie.trim().split('=');
+                if (name === 'csrftoken') cookieValue = decodeURIComponent(value);
+            });
+        }
+        return cookieValue;
+    }
+
+    async function loadEmployees() {
+        let response = await fetch("/api/employees/");
+        let employees = await response.json();
+        let select = document.getElementById("contract_employee");
+        select.innerHTML = `<option value="">Выберите сотрудника</option>`;
+
+        employees.forEach(emp => {
+            let option = `<option value="${emp.id}">${emp.first_name} ${emp.last_name}</option>`;
+            select.innerHTML += option;
+        });
+    }
+
+    async function loadContracts() {
+        try {
+            let response = await fetch("/api/contracts/");
+            if (!response.ok) throw new Error(`Ошибка загрузки: ${response.status}`);
+
+            let contracts = await response.json();
+            let table = document.getElementById("contracts-table");
+            table.innerHTML = "";
+
+            if (contracts.length === 0) {
+                table.innerHTML = "<tr><td colspan='5' class='text-center'>Нет доступных контрактов</td></tr>";
+                return;
+            }
+
+            contracts.forEach(contract => {
+                let employeeName = contract.employee
+                    ? `${contract.employee.first_name} ${contract.employee.last_name}`
+                    : "Неизвестный сотрудник";
+
+                let row = `<tr>
+                    <td>${employeeName}</td>
+                    <td>${contract.contract_type}</td>
+                    <td>${contract.start_date}</td>
+                    <td>${contract.end_date || "Не указано"}</td>
+                    <td>
+                        <button class="btn btn-warning btn-sm" onclick="editContract(${contract.id}, ${contract.employee?.id || 'null'}, '${contract.contract_type}', '${contract.start_date}', '${contract.end_date || ''}')">✏️</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteContract(${contract.id})">🗑️</button>
+                    </td>
+                </tr>`;
+                table.innerHTML += row;
+            });
+
+        } catch (error) {
+            console.error("Ошибка загрузки контрактов:", error);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadContracts();
+    });
+
+    function editContract(id, employeeId, contractType, startDate, endDate) {
+        document.getElementById("contract_id").value = id;
+        document.getElementById("contract_employee").value = employeeId;
+        document.getElementById("contract_type").value = contractType;
+        document.getElementById("contract_start").value = startDate;
+        document.getElementById("contract_end").value = endDate;
+    }
+
+     async function deleteContract(id) {
+        if (!confirm("Вы уверены, что хотите удалить этот контракт?")) return;
+
+        try {
+            let response = await fetch(`/api/contracts/${id}/`, { method: "DELETE" });
+            if (!response.ok) throw new Error("Ошибка удаления");
+
+            loadContracts();
+        } catch (error) {
+            console.error("Ошибка при удалении контракта:", error);
+        }
+    }
+
+    document.getElementById("contract-form").addEventListener("submit", async function(e) {
+        e.preventDefault();
+        let id = document.getElementById("contract_id").value;
+        let data = {
+            employee_id: document.getElementById("contract_employee").value,  // Передаем employee_id
+            start_date: document.getElementById("contract_start").value,
+            end_date: document.getElementById("contract_end").value,
+            contract_type: document.getElementById("contract_type").value
+        };
+        let url = id ? `/api/contracts/${id}/` : "/api/contracts/";
+        let method = id ? "PUT" : "POST";
+
+        let response = await fetch(url, {
+            method: method,
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCSRFToken()
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            loadContracts();
+            document.getElementById("contract-form").reset();
+            document.getElementById("contract_id").value = "";
+        } else {
+            let errorData = await response.json();
+            console.error("Ошибка при сохранении:", errorData);
+        }
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadEmployees();  // ✅ Загружаем сотрудников при загрузке страницы
+        loadContracts();
+    });
+</script>
+
+{% endblock %}

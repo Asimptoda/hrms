@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}История должностей{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center">История изменений должностей</h2>
+
+    <table class="table table-striped mt-4">
+        <thead class="thead-dark">
+            <tr>
+                <th>Сотрудник</th>
+                <th>Старая должность</th>
+                <th>Новая должность</th>
+                <th>Дата изменения</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in history %}
+            <tr>
+                <td>{{ record.employee.first_name }} {{ record.employee.last_name }}</td>
+                <td>{{ record.old_position }}</td>
+                <td>{{ record.new_position }}</td>
+                <td>{{ record.changed_at|date:"d.m.Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="text-center">Нет записей</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

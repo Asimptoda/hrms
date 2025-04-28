@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+
+{% block title %}Управление курсами{% endblock %}
+
+{% block content %}
+<h2>Курсы обучения</h2>
+
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th>Название</th>
+            <th>Описание</th>
+            <th>Дата начала</th>
+            <th>Дата окончания</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody id="courses-table"></tbody>
+</table>
+
+<h3 id="course-form-title">Добавить курс</h3>
+<form id="course-form">
+    <input type="hidden" id="course_id">
+
+    <label>Название курса:</label>
+    <input type="text" id="course_title" class="form-control" required>
+
+    <label>Описание:</label>
+    <textarea id="course_description" class="form-control"></textarea>
+
+    <label>Дата начала:</label>
+    <input type="date" id="course_start_date" class="form-control" required>
+
+    <label>Дата окончания:</label>
+    <input type="date" id="course_end_date" class="form-control" required>
+
+    <button type="submit" class="btn btn-primary mt-3">Сохранить</button>
+    <button type="button" class="btn btn-secondary mt-3" onclick="resetForm()">Очистить</button>
+</form>
+
+<script>
+function getCSRFToken() {
+    let cookieValue = null;
+    document.cookie.split(';').forEach(cookie => {
+        let [name, value] = cookie.trim().split('=');
+        if (name === 'csrftoken') cookieValue = decodeURIComponent(value);
+    });
+    return cookieValue;
+}
+
+async function loadCourses() {
+    let response = await fetch("/api/training/");
+    let data = await response.json();
+    let table = document.getElementById("courses-table");
+    table.innerHTML = "";
+    data.forEach(course => {
+        table.innerHTML += `<tr>
+            <td>${course.title}</td>
+            <td>${course.description || "—"}</td>
+            <td>${course.start_date}</td>
+            <td>${course.end_date}</td>
+            <td>
+                <button class="btn btn-warning btn-sm" onclick="editCourse(${course.id}, '${course.title}', '${course.description}', '${course.start_date}', '${course.end_date}')">✏️ Редактировать</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCourse(${course.id})">🗑️ Удалить</button>
+            </td>
+        </tr>`;
+    });
+}
+
+function editCourse(id, title, description, start_date, end_date) {
+    document.getElementById("course_id").value = id;
+    document.getElementById("course_title").value = title;
+    document.getElementById("course_description").value = description;
+    document.getElementById("course_start_date").value = start_date;
+    document.getElementById("course_end_date").value = end_date;
+    document.getElementById("course-form-title").innerText = "Редактировать курс";
+}
+
+function resetForm() {
+    document.getElementById("course_id").value = "";
+    document.getElementById("course_title").value = "";
+    document.getElementById("course_description").value = "";
+    document.getElementById("course_start_date").value = "";
+    document.getElementById("course_end_date").value = "";
+    document.getElementById("course-form-title").innerText = "Добавить курс";
+}
+
+document.getElementById("course-form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    let id = document.getElementById("course_id").value;
+    let url = id ? `/api/training/${id}/` : "/api/training/";
+    let method = id ? "PUT" : "POST";
+
+    let data = {
+        title: document.getElementById("course_title").value,
+        description: document.getElementById("course_description").value,
+        start_date: document.getElementById("course_start_date").value,
+        end_date: document.getElementById("course_end_date").value
+    };
+
+    let response = await fetch(url, {
+        method: method,
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCSRFToken()
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+        let error = await response.json();
+        console.error("Ошибка:", error);
+        alert("Ошибка: " + JSON.stringify(error));
+        return;
+    }
+
+    resetForm();
+    loadCourses();
+});
+
+async function deleteCourse(id) {
+    if (!confirm("Удалить курс?")) return;
+
+    let response = await fetch(`/api/training/${id}/`, {
+        method: "DELETE",
+        headers: { "X-CSRFToken": getCSRFToken() }
+    });
+
+    if (response.ok) {
+        loadCourses();
+    } else {
+        let error = await response.json();
+        console.error("Ошибка при удалении:", error);
+        alert("Ошибка: " + JSON.stringify(error));
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    loadCourses();
+});
+</script>
+{% endblock %}

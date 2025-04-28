@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block title %}Список сотрудников{% endblock %}
+
+{% block content %}
+<h2>Список сотрудников</h2>
+
+<table class="table table-hover table-bordered">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Имя</th>
+            <th>Фамилия</th>
+            <th>Email</th>
+            <th>Телефон</th>
+            <th>Должность</th>
+            <th>Базовая зарплата</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody id="employees-table"></tbody>
+</table>
+
+<h3>Добавить/Редактировать сотрудника</h3>
+<form id="employee-form" class="card p-3 shadow">
+    <input type="hidden" id="employee_id">
+
+    <label for="first_name" class="form-label">Имя:</label>
+    <input type="text" id="first_name" class="form-control" placeholder="Введите имя" required>
+
+     <label for="last_name" class="form-label mt-2">Фамилия:</label>
+    <input type="text" id="last_name" class="form-control" placeholder="Введите фамилию" required>
+
+    <label for="last_name" class="form-label mt-2">Почта:</label>
+    <input type="email" id="email" class="form-control" placeholder="Email" required>
+
+    <label for="last_name" class="form-label mt-2">Тел-ном:</label>
+    <input type="text" id="phone" class="form-control" placeholder="Телефон (необязательно)">
+
+    <label for="position" class="form-label mt-2">Должность:</label>
+    <select id="position" class="form-select" required>
+        <option value="Manager">Менеджер</option>
+        <option value="Developer">Разработчик</option>
+        <option value="Analyst">Аналитик</option>
+        <option value="HR">HR</option>
+        <option value="Accountant">Бухгалтер</option>
+        <option value="Designer">Дизайнер</option>
+    </select>
+
+    <label for="last_name" class="form-label mt-2">Зар-плата:</label>
+    <input type="number" id="base_salary" class="form-control" placeholder="Базовая зарплата" required>
+
+    <button class="btn btn-primary mt-3" type="submit">Сохранить</button>
+</form>
+
+<script>
+    function getCSRFToken() {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            document.cookie.split(';').forEach(cookie => {
+                let [name, value] = cookie.trim().split('=');
+                if (name === 'csrftoken') cookieValue = decodeURIComponent(value);
+            });
+        }
+        return cookieValue;
+    }
+
+    async function loadEmployees() {
+        let response = await fetch("/api/employees/");
+        let data = await response.json();
+        let table = document.getElementById("employees-table");
+        table.innerHTML = "";
+        data.forEach(emp => {
+            let row = `<tr>
+                <td>${emp.id}</td>
+                <td>${emp.first_name}</td>
+                <td>${emp.last_name}</td>
+                <td>${emp.email}</td>
+                <td>${emp.phone}</td>
+                <td>${emp.position}</td>
+                <td>${emp.base_salary}</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" onclick="editEmployee(${emp.id}, '${emp.first_name}', '${emp.last_name}', '${emp.email}', '${emp.phone}', '${emp.position}', ${emp.base_salary})">✏️ Редактировать</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteEmployee(${emp.id})">🗑️ Удалить</button>
+                </td>
+            </tr>`;
+            table.innerHTML += row;
+        });
+    }
+
+     function editEmployee(id, first_name, last_name, email, phone, position, base_salary) {
+        document.getElementById("employee_id").value = id;
+        document.getElementById("first_name").value = first_name;
+        document.getElementById("last_name").value = last_name;
+        document.getElementById("email").value = email;
+        document.getElementById("phone").value = phone;
+        document.getElementById("position").value = position;
+        document.getElementById("base_salary").value = base_salary;
+    }
+
+    document.getElementById("employee-form").addEventListener("submit", async function(e) {
+        e.preventDefault();
+
+        let id = document.getElementById("employee_id").value;
+        let url = id ? `/api/employees/${id}/` : "/api/employees/";
+        let method = id ? "PUT" : "POST";
+
+        let employeeData = {
+            first_name: document.getElementById("first_name").value,
+            last_name: document.getElementById("last_name").value,
+            email: document.getElementById("email").value,
+            phone: document.getElementById("phone").value,
+            position: document.getElementById("position").value,
+            base_salary: document.getElementById("base_salary").value
+        };
+
+        await fetch(url, {
+            method: method,
+            headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFToken() },
+            body: JSON.stringify(employeeData)
+        });
+        loadEmployees();
+    });
+
+    async function deleteEmployee(id) {
+        if (confirm("Вы уверены, что хотите удалить сотрудника?")) {
+            await fetch(`/api/employees/${id}/`, { method: "DELETE", headers: { "X-CSRFToken": getCSRFToken() } });
+            loadEmployees();
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadEmployees);
+</script>
+
+{% endblock %}

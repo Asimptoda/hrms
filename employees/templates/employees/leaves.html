@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{% block title %}Отпуска сотрудников{% endblock %}
+
+{% block content %}
+<h2>Отпуска сотрудников</h2>
+
+<table class="table table-hover table-bordered">
+    <thead>
+        <tr>
+            <th>Сотрудник</th>
+            <th>Тип</th>
+            <th>Начало</th>
+            <th>Конец</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody id="leaves-table"></tbody>
+</table>
+
+<h3>Добавить/Редактировать отпуск</h3>
+<form id="leave-form" class="card p-3 shadow">
+    <input type="hidden" id="leave_id">
+
+    <label for="leave_employee" class="form-label">Сотрудник:</label>
+    <select id="leave_employee" class="form-select" required></select>
+
+    <label for="leave_type" class="form-label mt-2">Тип отпуска:</label>
+    <select id="leave_type" class="form-select">
+        <option value="Vacation">Отпуск</option>
+        <option value="Sick">Больничный</option>
+        <option value="Unpaid">Неоплачиваемый отпуск</option>
+    </select>
+
+    <label for="leave_start" class="form-label mt-2">Дата начала:</label>
+    <input type="date" id="leave_start" class="form-control" required>
+
+    <label for="leave_end" class="form-label mt-2">Дата окончания:</label>
+    <input type="date" id="leave_end" class="form-control" required>
+
+    <button class="btn btn-primary mt-3" type="submit">Сохранить</button>
+</form>
+
+<script>
+    const leaveTypeTranslation = {
+        "Vacation": "Отпуск",
+        "Sick": "Больничный",
+        "Unpaid": "Неоплачиваемый отпуск"
+    };
+
+    function getCSRFToken() {
+        let cookieValue = null;
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.startsWith('csrftoken=')) {
+                cookieValue = decodeURIComponent(cookie.substring('csrftoken='.length));
+                break;
+            }
+        }
+        return cookieValue;
+    }
+
+    async function loadEmployees() {
+        let response = await fetch("/api/employees/");
+        let data = await response.json();
+        let select = document.getElementById("leave_employee");
+        select.innerHTML = `<option value="">Выберите сотрудника</option>`;
+
+        data.forEach(emp => {
+            let option = `<option value="${emp.id}">${emp.first_name} ${emp.last_name}</option>`;
+            select.innerHTML += option;
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadEmployees();
+    });
+
+    async function loadLeaves() {
+        let response = await fetch("/api/leaves/");
+        let data = await response.json();
+        let table = document.getElementById("leaves-table");
+        table.innerHTML = "";
+        data.forEach(leave => {
+            let employeeName = leave.employee ? `${leave.employee.first_name} ${leave.employee.last_name}` : "Неизвестно";
+            let translatedLeaveType = leaveTypeTranslation[leave.leave_type] || leave.leave_type;
+            let row = `<tr>
+                <td>${employeeName}</td>
+                <td>${translatedLeaveType}</td>
+                <td>${leave.start_date}</td>
+                <td>${leave.end_date}</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" onclick="editLeave(${leave.id}, ${leave.employee.id}, '${leave.leave_type}', '${leave.start_date}', '${leave.end_date}')">✏️ Редактировать</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteLeave(${leave.id})" style="color: black;">🗑️ Удалить</button>
+                </td>
+            </tr>`;
+            table.innerHTML += row;
+        });
+    }
+
+    function editLeave(id, employee, type, start, end) {
+        document.getElementById("leave_id").value = id;
+        document.getElementById("leave_employee").value = employee;
+        document.getElementById("leave_type").value = type;
+        document.getElementById("leave_start").value = start;
+        document.getElementById("leave_end").value = end;
+    }
+
+     async function saveLeave(event) {
+        event.preventDefault();
+
+        let id = document.getElementById("leave_id").value;
+        let data = {
+            employee_id: Number(document.getElementById("leave_employee").value), // ✅ employee_id именно так!
+            leave_type: document.getElementById("leave_type").value,
+            start_date: document.getElementById("leave_start").value,
+            end_date: document.getElementById("leave_end").value
+        };
+
+        let url = id ? `/api/leaves/${id}/` : "/api/leaves/";
+        let method = id ? "PUT" : "POST";
+
+        try {
+            let response = await fetch(url, {
+                method: method,
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCSRFToken()
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                console.log("Отпуск успешно сохранён!");
+                loadLeaves();
+                document.getElementById("leave-form").reset();
+                document.getElementById("leave_id").value = "";
+            } else {
+                let errorData = await response.json();
+                console.error("Ошибка при сохранении отпуска:", errorData);
+            }
+        } catch (error) {
+            console.error("Ошибка запроса:", error);
+        }
+    }
+
+    document.getElementById("leave-form").addEventListener("submit", saveLeave);
+
+
+    // ✅ Гарантированно рабочий код:
+    async function deleteLeave(id) {
+        if (!confirm("Вы уверены, что хотите удалить отпуск?")) return;
+
+        try {
+            let response = await fetch(`/api/leaves/${id}/`, {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCSRFToken()
+                },
+                credentials: 'include'  // ✅ добавь эту строку!
+            });
+
+            if (response.ok) {
+                console.log("Отпуск успешно удалён!");
+                loadLeaves();
+            } else {
+                let errorData = await response.json();
+                console.error("Ошибка при удалении:", errorData);
+            }
+        } catch (error) {
+            console.error("Ошибка запроса:", error);
+        }
+    }
+
+
+    document.getElementById("leave-form").addEventListener("submit", saveLeave);
+    document.addEventListener("DOMContentLoaded", () => {
+        loadEmployees();
+        loadLeaves();
+    });
+</script>
+{% endblock %}
